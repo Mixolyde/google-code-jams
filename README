@@ -1,0 +1,19 @@
+This is a collection of sample problem solutions for the
+Google Code Jam competitions. These are mostly interesting searching
+and sorting problems.
+
+To solve a new problem, I create a copy of
+codejamtemplate.erl
+and modify it as appropriate.
+
+See http://code.google.com/codejam/ for the problem sets
+
+Complete and accurate solutions:
+
+africa2010storecredit.erl
+codejamalienlang.erl
+codejamminscalar.erl
+
+In Progress:
+codejamwelcome.erl - Horribly slow recursive solution, accurate for the sample but
+  doesn't complete in reasonable time on small-practice
