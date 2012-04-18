@@ -55,7 +55,8 @@ codejam(InFilename) ->
   [NumCases] = parse_ints(NumCaseString),
 
   % send all of the data lines to the solver
-  Results = solvecases(Caselines, NumCases),
+  % Results = sequential_startsolve(Caselines, NumCases),
+  Results = parallel_startsolve(Caselines, NumCases),
 
   % assert that we have the right number of results
   NumCases = length(Results),
@@ -107,36 +108,81 @@ print_output_device(OutD, [Case | Rest], Count) ->
 
 
 %%-----------------------------------------------------------------------------
-%% Function: solvecases/1
+%% Function: sequential_startsolve/2
 %% Purpose: Splits the input lines into input groups and solves the problem
 %% Args: List of input lines to solve, total number of cases for reporting status
 %% Returns: List of results for each case or {error, Reason} if it crashes
 %%-----------------------------------------------------------------------------
-solvecases(Caselines, NumCases) ->
+sequential_startsolve(Caselines, NumCases) ->
   % start the recursive solver at Case #1 with empty result accumulator
-  solvecase(Caselines, NumCases, []).
+  sequential_solvecase(Caselines, NumCases, []).
 
-solvecase([], NumCases, Accum) ->
+sequential_solvecase([], NumCases, Accum) ->
   print_status(length(Accum), NumCases),
   lists:reverse(Accum); %termination case, reverse the results and return
-solvecase(Lines, NumCases, Accum) ->
+sequential_solvecase(Lines, NumCases, Accum) ->
   print_status(length(Accum), NumCases),
   % io:format("DEBUG: Solving Case #~w~n", [NumCases]),
 
   % split the first few lines off the input for this case
   {CaseLines, RestLines} = lists:split(?LINESPERCASE, Lines),
 
-  % parse the input lines into usable data structures
-  {A, B} = parsecase(CaseLines),
-  % io:format("DEBUG: Have ~w to spend on ~w items: ~w~n", [Credit, length(Items), Items]),
-
-  % now that we've parsed, filtered and sorted the data file, we can actually solve the problem!
-
-  % brute force breadth-first search to solve a case
-  Count = search(A, B),
+  % solve the actual case
+  Count = single_solvecase(CaseLines),
 
   % push the result onto the accumulator and recurse
-  solvecase(RestLines, NumCases, [{Count} | Accum]).
+  sequential_solvecase(RestLines, NumCases, [{Count} | Accum]).
+
+
+parallel_startsolve(Alllines, NumCases) ->
+  % start sending cases off to remote solvers
+  SentCount = parallel_solvecases(Alllines, 1),
+  io:format("~b cases sent to parallel solvers, starting receive loop~n", [SentCount]),
+  parallel_receive_loop(NumCases, []).
+
+parallel_solvecases([], Casenum) ->
+  Casenum - 1;
+parallel_solvecases(Alllines, Casenum) ->
+  % split the first few lines off the input for this case
+  {CaseLines, RestLines} = lists:split(?LINESPERCASE, Alllines),
+
+  % send these case lines to a newly spawned parallel_solver process
+  spawn(codejamrecycle, parallel_solver, [self(), CaseLines, Casenum]),
+
+  % recurse
+  parallel_solvecases(RestLines, Casenum + 1).
+
+% the parallel solver solves just a single case and sends a message back to the
+%   calling process. The case # is attached because they can return out of order.
+parallel_solver(From, CaseLines, Casenum) ->
+  Result = single_solvecase(CaseLines),
+  From ! {result, Casenum, Result}.
+
+parallel_receive_loop(NumCases, Results) when NumCases == length(Results) ->
+  io:format("Received all results!"),
+  % sort 'em
+  SortedResults = lists:sort(fun({CaseA, _ResultA}, {CaseB, _ResultB}) -> CaseA =< CaseB end, Results),
+  % return just the list of results in casenumber order
+  [{Result} || {_Casenum, Result} <- SortedResults];
+parallel_receive_loop(NumCases, Results) ->
+  io:format("Waiting for ~3b more results.~n", [NumCases - length(Results)]),
+  receive
+    {result, Casenum, Result} ->
+      parallel_receive_loop(NumCases, [{Casenum, Result} | Results]);
+    Else ->
+      io:format("Received bad message format from someone: ~p~n", [Else]),
+      {error, bad_message, Else}
+  end.
+
+% the actual solver of a single set of case input lines
+% parses the input and solves it.
+% Customize to the problem
+single_solvecase(CaseLines) ->
+  % parse the input lines into usable data structures
+  {A, B} = parsecase(CaseLines),
+  % brute force breadth-first search to solve a case
+  Count = search(A, B),
+  Count.
 
 %%-----------------------------------------------------------------------------
 %% Function: parsecase/1
@@ -166,43 +212,36 @@ print_status(Current, NumCases) ->
 %% Case solving algorithm
 search (A, A) -> 0;
 search (A, B) ->
-  search(A, B, A, []).
+  Shifts = trunc(math:pow10(A)),
+
+  search(A, B, A, [], Shifts).
 
 % bubble search all the pairs between A and B
-search(_A, B, Index, Accum) when Index == B - 1 ->
+search(_A, B, Index, Accum, _Shifts) when Index == B - 1 ->
   % io:format("Accums: ~p~n", [Accum]),
   length(Accum);
-search(A, B, Index, Accum) ->
-  search(A, B, Index + 1, Accum ++ recycle_pairs(A, B, Index)).
+search(A, B, Index, Accum, Shifts) ->
+  search(A, B, Index + 1, Accum ++ recycle_pairs(A, B, Index, Shifts), Shifts).
 
-recycle_pairs(A, B, Int) ->
+recycle_pairs(A, B, Int, Shifts) ->
   %convert Ints to strings
   IntString = lists:flatten(io_lib:format("~b", [Int])),
-  % AString = lists:flatten(io_lib:format("~b", [A])),
-  % BString = lists:flatten(io_lib:format("~b", [B])),
   % io:format("Int: ~b, IntString ~s~n", [Int, IntString]),
   % generate all the shifts for this int and test them for validity
-  ShiftedSplits = [ lists:split(Shift, IntString) || Shift <- lists:seq(1, length(IntString) - 1)],
-  % filter out the ones that would start with 0
-  FilteredSplits = lists:filter(
-    fun({_First, [SecondLetter | _RestSecond]} ) ->
-      SecondLetter /= $0 end, ShiftedSplits),
+  ShiftedSplits = [ lists:split(Shift, IntString) || Shift <- lists:seq(1, Shifts],
+  % filter out repeat numbers
+  ShiftedSplitsNoDuplicates = lists:takewhile(
+    fun({First, Second}) -> (Second ++ First) /= IntString end, ShiftedSplits),
+
   % perform the shift and convert back to integers
   ShiftedInts = lists:map(
     fun({First, Second}) -> parse_int(Second ++ First) end,
-    FilteredSplits),
+    ShiftedSplitsNoDuplicates),
   % test each generated int for validity
   ValidPairs = lists:filter(
     % Test that A <= Int < TestInt =< B
-    fun(TestInt) -> A =< TestInt andalso Int < TestInt andalso TestInt =< B
+    fun(TestInt) -> Int < TestInt andalso TestInt =< B
     end, ShiftedInts),
-  % print some debug info
-  case length(ValidPairs) > 0 of
-    true ->
-      % io:format("Int: ~b Shifts: ~p Valids: ~p~n", [Int, ShiftedInts, ValidPairs]),
-      ok;
-    false -> ok
-  end,
   % finally, return the number of valid pairs
   [{Int, ValidShift} || ValidShift <- ValidPairs].
 
