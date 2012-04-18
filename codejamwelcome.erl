@@ -158,6 +158,23 @@ parse_int(Line) ->
 
 %% Case solving algorithm
 %% extraordinarily naive search. get match, count possible matches from here plus all possible matches after this one
+naivesearch([], _Line) ->
+  % finished going through our search string, so that's a success
+  1;
+naivesearch(_SearchString, []) ->
+  % ran out of line to search through, not a match
+  0;
+naivesearch([SearchChar | RestSearch], [SearchChar | RestLine]) ->
+    % the first two charachters of our inputs match, so keep search through this input for possibilities
+    % and keep searching with current search string for other combinations
+    % io:format("SearchChar matched: ~p~n", [SearchChar]),
+    naivesearch([SearchChar | RestSearch], RestLine) + naivesearch(RestSearch, RestLine);
+naivesearch([SearchChar | RestSearch], [_NotSearchChar | RestLine]) ->
+    % the first two charachters of our inputs do not match, so continue search at next char in the line
+    % io:format("SearchChar ~p did not match ~p~n", [SearchChar, _NotSearchChar]),
+    naivesearch([SearchChar | RestSearch], RestLine).
+
+% attempt to make naive search a little smarter and cut out of searches with no hope early
 search([], _Line) ->
   % finished going through our search string, so that's a success
   1;
@@ -165,24 +182,86 @@ search(_SearchString, []) ->
   % ran out of line to search through, not a match
   0;
 search([SearchChar | RestSearch], [SearchChar | RestLine]) ->
-    % the first two charachters of our inputs match, so keep search through this input for possibilities
+    % the first two characters of our inputs match, so keep search through this input for possibilities
     % and keep searching with current search string for other combinations
-    % io:format("SearchChar matched: ~p~n", [SearchChar]),
-    search([SearchChar | RestSearch], RestLine) + search(RestSearch, RestLine);
-search([SearchChar | RestSearch], [_NotSearchChar | RestLine]) ->
-    % the first two charachters of our inputs do not match, so continue search at next char in the line
+    % io:format("SearchChar matched: ~c~n", [SearchChar]),
+    % depth first search the rest of the search space
+    RestCharsCount = search(RestSearch, RestLine),
+    % if there are 0 matches of the rest of the chars, we know there are no more full matches
+    % with this char either
+    case RestCharsCount > 0 of
+      true -> RestCharsCount + search([SearchChar | RestSearch], RestLine);
+      false ->
+        RestCharsCount
+    end;
+%if the first two charachters don't match, check for line lengths
+search(FullSearch = [_SearchChar | _RestSearch], [_NotSearchChar | RestLine])
+  when length(FullSearch) =< length(RestLine) ->
+    % the first two characters of our inputs do not match, so continue search at next char in the line
     % io:format("SearchChar ~p did not match ~p~n", [SearchChar, _NotSearchChar]),
-    search([SearchChar | RestSearch], RestLine).
+
+    % do a quick pair of O(n) character count calculations to see if it makes sense to keep going
+    SearchCharacterCounts = character_count(FullSearch),
+    LineCharacterCounts   = character_count(RestLine),
+
+    % one more O(n) op to see if we should keep going or fail out quickly
+    case should_continue(SearchCharacterCounts, LineCharacterCounts) of
+      true -> search(FullSearch, RestLine);
+      false -> 0
+    end;
+search(_FullSearch, _FullLine) ->
+  % io:format("Search is longer than the rest of the line: ~p to ~p~n", [_FullSearch, _FullLine]),
+  0.
+
+% start counter with empty accumulator
+character_count(Characters) -> character_count(Characters, []).
+character_count([], Accum) -> Accum;
+character_count([Char | Rest], Accum) ->
+  case lists:keysearch(Char, 1, Accum) of
+    {value, {Char, Count}} ->
+      % search for rest with an updated count
+      character_count(Rest, lists:keyreplace(Char, 1, Accum, {Char, Count+1}) );
+    false ->
+      % add a new count tuple for this new char
+      character_count(Rest, [{Char, 1} | Accum])
+  end.
+
+should_continue([], _LineCounts) -> true;
+should_continue([{SearchChar, SearchCount} | RestSearch], LineCounts) ->
+  % search line counts for char and see if there are enough left {$a, 3}
+  case lists:keysearch(SearchChar, 1, LineCounts) of
+    {value, {SearchChar, LineCount}} when SearchCount > LineCount ->
+      % required search count is hiring than the line we're searching in so fail fast
+      false;
+    {value, {SearchChar, _LineCount}} ->
+      % keep searching
+      should_continue(RestSearch, LineCounts);
+    false ->
+      % char not found at all in the rest of the line, fail
+      false
+  end.
 
 unit_test() ->
   %1 = search("why", "why"),
-  %0 = search("abcde", "zde"),
+  0 = search("abcde", "zde"),
   %1 = search("", ""),
   %1 = search("", "abc"),
   %0 = search("abc", ""),
   3 = search("a", "aaa"),
   3 = search("ab", "aaab"),
-  3 = search("ab", "abbb"),
-  9 = search("ab", "aaabbb"),
+  2 = search("a b", "ab bb"),
+  9 = search("a b", "aaa bbb"),
+  18 = search("a b", "aaa  bbb"),
+  6 = search("ab", "ababab"),
+  [{$a, 1}, {$b, 1}] = character_count("ba"),
+  [{$a, 2}, {$b, 3}] = character_count("bbaba"),
+  true = should_continue([{$a, 2}, {$b, 3}], [{$a, 2}, {$b, 3}]),
+  true = should_continue([{$a, 2}, {$b, 3}], [{$a, 4}, {$b, 5}]),
+  false = should_continue([{$a, 2}, {$b, 3}], [{$b, 3}]),
+  false = should_continue([{$a, 2}, {$b, 3}], [{$a, 4}, {$b, 1}]),
+  false = should_continue([{$a, 2}, {$b, 3}], [{$a, 1}, {$b, 3}]),
+
+    0 = search("welcome to code jam", "so dqmweawewwwwwewwweoeeecweeeeeeljeeem llleclljllcclccllcocdcccoocoeomc moommmojmm oom ommee e eeeeeceem     ee cj ttwetoe t  oo t  ttoowotootto oo  e oo do   ocl voc c ce cdooococodcmocoeodo ododddoodededddddedtecee de eeem j ee     jr jt jm jjcjjjjjjajoaaaaaaaade"),
+  % 0 = search("welcome to code jam", "so dqmweawewwwwwewwweoeeecweeeeeeljeeem llleclljllcclccllcocdcccoocoeomc moommmojmm oom ommee e eeeeeceem     ee cj ttwetoe t  oo t  ttoowotootto oo  e oo do   ocl voc c ce cdooococodcmocoeodo ododddoodededddddedtecee de eeem j ee     jr jt jm jjcjjjjjjajoaaaaaaaademmaajmtmmmmmmmdm ommh ei"),
   ok.
 

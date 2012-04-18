@@ -15,8 +15,11 @@ Complete and accurate solutions:
 africa2010storecredit.erl
 codejamalienlang.erl
 codejamminscalar.erl
+codejamtongues.erl
 
 In Progress:
 codejamwelcome.erl - Horribly slow recursive solution, accurate for the sample but
   doesn't complete in reasonable time on small-practice
 
+codejamrecycle.erl - Another slow recursive search solution, fast for the small sample,
+  but too long for the large one

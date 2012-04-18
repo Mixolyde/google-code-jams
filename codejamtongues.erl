@@ -14,16 +14,25 @@
 %% cd ("C:/Users/bwilliams/Dropbox/dev/erl/codejam").
 %% c(codejamtemplate).
 
--module(codejamtemplate).
+-module(codejamtongues).
 -author("mixolyde@gmail.com").
 
 -compile([debug_info, export_all]).
 
 %% Number of lines to split off the input lines per case
--define(LINESPERCASE, 3).
+-define(LINESPERCASE, 1).
 
 %% Number of result values to output on a case line
--define(RESULTSPERLINE, 2).
+-define(RESULTSPERLINE, 1).
+
+-define(CIPHER, [
+{$a, $y}, {$b, $n}, {$d, $i}, {$c, $f}, {$e, $c},
+{$f, $w}, {$g, $l}, {$h, $b}, {$i, $k}, {$j, $u},
+{$k, $o}, {$l, $m}, {$m, $x}, {$n, $s}, {$o, $e},
+{$p, $v}, {$q, $z}, {$r, $p}, {$s, $d}, {$t, $r},
+{$u, $j}, {$v, $g}, {$w, $t}, {$x, $h}, {$y, $a},
+{$z, $q},
+{$ , $ }]).
 
 % Quick start method calls
 codejamsmalla() -> codejam("A-small-practice.in").
@@ -33,11 +42,6 @@ codejamlargeb() -> codejam("B-large-practice.in").
 codejamsmallc() -> codejam("C-small-practice.in").
 codejamlargec() -> codejam("C-large-practice.in").
 codejamsample() -> codejam("sample.in").
-
-%%-----------------------------------------------------------------------------
-%% General codejam setup methods and utilities, only slightly customized per
-%%   problem.
-%%-----------------------------------------------------------------------------
 
 %%-----------------------------------------------------------------------------
 %% Function: codejame/1
@@ -60,7 +64,7 @@ codejam(InFilename) ->
   [NumCases] = parse_ints(NumCaseString),
 
   % send all of the data lines to the solver
-  Results = solvecases(Caselines, NumCases),
+  Results = solvecases(Caselines),
 
   % assert that we have the right number of results
   NumCases = length(Results),
@@ -89,10 +93,10 @@ get_all_lines(Device, Accum) ->
 
 %%-----------------------------------------------------------------------------
 %% Function: print_output/2
-%% Purpose: Formats and prints the result list to the output file
-%% Args: OutFilename is the file name to open, Results is a list of tuples that
-%%  will be printed to the file, using the ?RESULTSPERLINE macro
-%% Returns: ok or {error, Reason} if it crashes
+%% Purpose: Formats and prints the result list to the output file device
+%% Args: Device is an IO Device handle, Accum is the accumulator that recursive
+%%   calls to the method use to store the lines, start with an empty list
+%% Returns: List of strings or {error, Reason} if it crashes
 %% NOTE: By default this method closes the IO Device when it's done reading
 %%-----------------------------------------------------------------------------
 print_output(OutFilename, Results) ->
@@ -105,105 +109,54 @@ print_output(OutFilename, Results) ->
 print_output_device(_OutD, [], _Count) -> ok;  %termination case, return ok status
 print_output_device(OutD, [Case | Rest], Count) ->
   OutputList = [Count] ++ tuple_to_list(Case),
-  Format = "Case #~w:" ++ string:copies(" ~w", ?RESULTSPERLINE) ++ "~n",
+  Format = "Case #~w:" ++ string:copies(" ~s", ?RESULTSPERLINE) ++ "~n",
   io:format(Format, OutputList),
   io:format(OutD, Format, OutputList),
   print_output_device(OutD, Rest, Count + 1).
 
 
 %%-----------------------------------------------------------------------------
-%% Function: solvecases/2
+%% Function: solvecases/1
 %% Purpose: Splits the input lines into input groups and solves the problem
-%% Args: List of input lines to solve, total number of cases to solve (for
-%%   status printing)
+%% Args: List of input lines to solve
 %% Returns: List of results for each case or {error, Reason} if it crashes
-%% NOTE: The return structures from parsecase and search will need to be
-%%   customized for the specific problem before solving the next case
 %%-----------------------------------------------------------------------------
-solvecases(Caselines, NumCases) ->
+solvecases(Caselines) ->
   % start the recursive solver at Case #1 with empty result accumulator
-  solvecase(Caselines, NumCases, []).
+  solvecase(Caselines, []).
 
-solvecase([], NumCases, Accum) ->
-  print_status(length(Accum), NumCases), % print the last status
-  lists:reverse(Accum);                  % termination case, reverse the results and return
-solvecase(Lines, NumCases, Accum) ->
-  print_status(length(Accum), NumCases), % print the current status
+solvecase([], Accum) -> lists:reverse(Accum); %termination case, reverse the results and return
+solvecase(Lines, Accum) ->
+  % io:format("DEBUG: Solving Case #~w~n", [NumCases]),
 
-  % split the next problem input lines off the input for this case
-  {CaseLines, RestLines} = lists:split(?LINESPERCASE, Lines),
+  % split the first few lines off the input for this case
+  {[CaseLine], RestLines} = lists:split(?LINESPERCASE, Lines),
 
-  % parse the input lines into usable data structures
-  {Credit, Items} = parsecase(CaseLines),
-  % io:format("DEBUG: Have ~w to spend on ~w items: ~w~n", [Credit, length(Items), Items]),
+  CipherText = cipher(CaseLine),
 
-  % now that we've parsed, filtered and sorted the data file, we can actually solve the problem!
+  % push the result onto the accumulator and recurse
+  solvecase(RestLines, [{CipherText} | Accum]).
 
-  % brute force breadth-first search to solve a case
-  {success, {FirstIndex, FirstItem}, {SecondIndex, SecondItem}} = search(Credit, Items),
+cipher(PlainText) ->
+  cipher(PlainText, []).
+cipher([], Accum) -> lists:reverse(Accum);
+cipher([CipherLetter | Rest], Accum) ->
+  case lists:keyfind(CipherLetter, 2, ?CIPHER) of
+    {Letter, CipherLetter} ->
+      cipher(Rest, [Letter | Accum]);
+    false ->
+      cipher(Rest, [$# | Accum])
+  end.
 
-  % assert the solution is correct if possible
-  Credit = FirstItem + SecondItem,
-
-  % push the result onto the accumulator and solve the next case
-  solvecase(RestLines, NumCases, [{FirstIndex, SecondIndex} | Accum]).
-
-%% util method which parses a line into ints
+%% parses a line into ints
 parse_ints(Line) ->
   Tokens = string:tokens(Line, " "),
   lists:map(fun(Token) -> parse_int(Token) end, Tokens).
 
-%% util method which parses a line with a single value into an int
+%% parse a line with single value into an int
 parse_int(Line) ->
   {Result, _Rest} = string:to_integer(Line),
   Result.
-
-% util method for printing our progress through the cases to solve
-print_status(Current, NumCases) ->
-  io:format("Solved: ~4b of ~4b cases: ~3b%~n", [Current, NumCases, trunc(Current / NumCases * 100)]),
-  ok.
-
-%%-----------------------------------------------------------------------------
-%% Problem specific methods after this point
-%%-----------------------------------------------------------------------------
-
-%%-----------------------------------------------------------------------------
-%% Function: parsecase/1
-%% Purpose: Takes a list of case lines and parses them into the data variables
-%%   needed to solve the problem
-%% Args: List of input lines to parse
-%% Returns: Tuple of values for solving or an error
-%%-----------------------------------------------------------------------------
-parsecase([CreditLine, ItemCountLine, ItemLine]) ->
-  {Credit, []} = string:to_integer(CreditLine),
-  {ItemCount, []} = string:to_integer(ItemCountLine),
-  Items = parse_ints(ItemLine),
-  ItemCount = length(Items),
-  {IndexedItems, _ReturnIndex} = lists:mapfoldl(fun(Item, Index) -> {{Index, Item}, Index + 1} end, 1, Items),
-  % io:format("Indexed list: ~w~n", [IndexedItems]),
-  FilteredItems = lists:filter(fun({_Index, Item}) -> Item < Credit end, IndexedItems),
-  SortedFilteredItems = lists:sort(fun({_Index, A}, {_OtherIndex, B}) -> A =< B end, FilteredItems),
-  {Credit, SortedFilteredItems}.
-
-%% Case solving algorithm
-search(_Credit, []) ->
-  %should be caught before this, but just in case
-  {failure};
-search(_Credit, [_Item]) ->
-  %only one item left, fail
-  {failure};
-search(Credit, [{FirstIndex, FirstItem} | Rest]) ->
-  Match = Credit - FirstItem,
-  % we know what the match would be if it's paired with the first item
-  % so search for it
-  case lists:keyfind(Match, 2, Rest) of
-    {SecondIndex, Match} ->
-      %we found a match in the list, return success
-      {success, {FirstIndex, FirstItem}, {SecondIndex, Match}};
-    _Else ->
-      %look in Rest for a match
-      search(Credit, Rest)
-  end.
 
 unit_test() ->
   ok.
