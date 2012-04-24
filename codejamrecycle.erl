@@ -212,45 +212,34 @@ print_status(Current, NumCases) ->
 %% Case solving algorithm
 search (A, A) -> 0;
 search (A, B) ->
-  Shifts = trunc(math:pow10(A)),
+  Power = trunc(math:pow(10, trunc(math:log10(A)))),
 
-  search(A, B, A, [], Shifts).
+
+  search(A, B, A, 0, Power).
 
 % bubble search all the pairs between A and B
-search(_A, B, Index, Accum, _Shifts) when Index == B - 1 ->
+search(_A, B, Index, Accum, _Power) when Index == B - 1 ->
   % io:format("Accums: ~p~n", [Accum]),
-  length(Accum);
-search(A, B, Index, Accum, Shifts) ->
-  search(A, B, Index + 1, Accum ++ recycle_pairs(A, B, Index, Shifts), Shifts).
+  Accum;
+search(A, B, Index, Accum, Power) ->
+  RPairs = recycle_pairs(B, Index, shiftint(Index, Power), Power, 0),
+  search(A, B, Index + 1, Accum + RPairs, Power).
 
-recycle_pairs(A, B, Int, Shifts) ->
-  %convert Ints to strings
-  IntString = lists:flatten(io_lib:format("~b", [Int])),
-  % io:format("Int: ~b, IntString ~s~n", [Int, IntString]),
-  % generate all the shifts for this int and test them for validity
-  ShiftedSplits = [ lists:split(Shift, IntString) || Shift <- lists:seq(1, Shifts],
-  % filter out repeat numbers
-  ShiftedSplitsNoDuplicates = lists:takewhile(
-    fun({First, Second}) -> (Second ++ First) /= IntString end, ShiftedSplits),
+% recurse through possible shifts of Int and check for pairs
+recycle_pairs(_B, OriginalInt, OriginalInt, _Power, Accum) ->
+  Accum;
+recycle_pairs(B, OriginalInt, ShiftedInt, Power, Accum) ->
+  % io:format("Testing Original: ~b Shifted ~b of ~b times: ~b from ~b~n", [OriginalInt, CurrentShift, MaxShifts, ShiftedInt, CurrentInt]),
+  case ShiftedInt > OriginalInt andalso ShiftedInt =< B of
+    true ->
+      recycle_pairs(B, OriginalInt, shiftint(ShiftedInt, Power), Power, Accum + 1);
+    false ->
+      recycle_pairs(B, OriginalInt, shiftint(ShiftedInt, Power), Power, Accum)
+  end.
 
-  % perform the shift and convert back to integers
-  ShiftedInts = lists:map(
-    fun({First, Second}) -> parse_int(Second ++ First) end,
-    ShiftedSplitsNoDuplicates),
-  % test each generated int for validity
-  ValidPairs = lists:filter(
-    % Test that A <= Int < TestInt =< B
-    fun(TestInt) -> Int < TestInt andalso TestInt =< B
-    end, ShiftedInts),
-  % finally, return the number of valid pairs
-  [{Int, ValidShift} || ValidShift <- ValidPairs].
+shiftint(Int, Power) -> Int div 10 + (Int rem 10 * Power).
 
 unit_test() ->
-  0 = length(recycle_pairs(11, 13, 12)),
-  0 = length(recycle_pairs(11, 13, 1)),
-  1 = length(recycle_pairs(11, 25, 12)),
-  1 = length(recycle_pairs(11, 300, 123)),
-  2 = length(recycle_pairs(11, 400, 123)),
   0 = search(1, 9),
   3 = search(10, 40),
   156 = search(100, 500),

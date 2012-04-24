@@ -16,7 +16,7 @@
 %% c(codejamtemplate).
 %% codejamtemplate:codejamsmalla().
 
--module(codejamtemplate).
+-module(codejamwelcome2).
 -author("mixolyde@gmail.com").
 
 -compile([debug_info, export_all]).
@@ -24,10 +24,10 @@
 %% Defines to modify per problem
 
 %% Number of lines to split off the input lines per case
--define(LINESPERCASE, 3).
+-define(LINESPERCASE, 1).
 
 %% Number of result values to output on a case line
--define(RESULTSPERLINE, 2).
+-define(RESULTSPERLINE, 1).
 
 %% Quick start method calls
 codejamsmalla() -> codejam("A-small-practice.in").
@@ -38,6 +38,9 @@ codejamsmallc() -> codejam("C-small-practice.in").
 codejamlargec() -> codejam("C-large-practice.in").
 codejamsample() -> codejam("sample.in").
 codejamtemplate() -> codejam("template.in").
+
+% specific macros for this problem
+-define(PHRASE, "welcome to code jam").
 
 %%-----------------------------------------------------------------------------
 %% General codejam setup methods and utilities, not customized per
@@ -115,7 +118,7 @@ print_output_device(OutD, [Case | Rest], Count) ->
   OutputList = [Count] ++ tuple_to_list(Case),
   % Case 1: 1 2 3
   % Case 2: 4 5 6
-  Format = "Case #~w:" ++ string:copies(" ~w", ?RESULTSPERLINE) ++ "~n",
+  Format = "Case #~w: ~4..0w~n",
   io:format(Format, OutputList),
   io:format(OutD, Format, OutputList),
   print_output_device(OutD, Rest, Count + 1).
@@ -223,9 +226,6 @@ print_status(Current, NumCases) ->
   io:format("Solved: ~4b of ~4b cases: ~3b%~n", [Current, NumCases, trunc(Current / NumCases * 100)]),
   ok.
 
-% util method to take a list of return a set of {Index, Item} tuples, where the index is 1-indexed
-index_list(List) ->
-  lists:zip(lists:seq(1, length(List)), List).
 %%-----------------------------------------------------------------------------
 %% Problem specific methods after this point, customize for the problem
 %%-----------------------------------------------------------------------------
@@ -233,59 +233,55 @@ index_list(List) ->
 % The actual solver of a single set of case input lines, typically will parse
 %   the input lines into a data structure and then work on it
 % Customize to the problem
-single_solvecase(CaseLines) ->
-  % parse the input lines into usable data structures
-  {Credit, Items} = parsecase(CaseLines),
-  % brute force breadth-first search to solve a case
-  {success, {FirstIndex, FirstItem}, {SecondIndex, SecondItem}} = search(Credit, Items),
+single_solvecase([FirstLine]) ->
 
-  % assert the solution is correct if possible
-  Credit = FirstItem + SecondItem,
-
-  {FirstIndex, SecondIndex}.
+  Combinations = search(FirstLine),
 
 
-%%-----------------------------------------------------------------------------
-%% Function: parsecase/1
-%% Purpose: Takes a list of case lines and parses them into the data variables
-%%   needed to solve the problem
-%% Args: List of input lines to parse
-%% Returns: Tuple of values for solving or an error
-%%-----------------------------------------------------------------------------
-parsecase([CreditLine, ItemCountLine, ItemLine]) ->
-  {Credit, []} = string:to_integer(CreditLine),
-  {ItemCount, []} = string:to_integer(ItemCountLine),
-  Items = parse_ints(ItemLine),
-  ItemCount = length(Items),
-  {IndexedItems, _ReturnIndex} = lists:mapfoldl(fun(Item, Index) -> {{Index, Item}, Index + 1} end, 1, Items),
-  % io:format("Indexed list: ~w~n", [IndexedItems]),
-  FilteredItems = lists:filter(fun({_Index, Item}) -> Item < Credit end, IndexedItems),
-  SortedFilteredItems = lists:sort(fun({_Index, A}, {_OtherIndex, B}) -> A =< B end, FilteredItems),
-  {Credit, SortedFilteredItems}.
+  {Combinations}.
 
 %% Case solving algorithm, typically some kind of generate and test or
 %%   space searcher
-search(_Credit, []) ->
-  %should be caught before this, but just in case
-  {failure};
-search(_Credit, [_Item]) ->
-  %only one item left, fail
-  {failure};
-search(Credit, [{FirstIndex, FirstItem} | Rest]) ->
-  Match = Credit - FirstItem,
-  % we know what the match would be if it's paired with the first item
-  % so search for it
-  case lists:keyfind(Match, 2, Rest) of
-    {SecondIndex, Match} when SecondIndex > FirstIndex ->
-      %we found a match in the list, return success
-      {success, {FirstIndex, FirstItem}, {SecondIndex, Match}};
-    {SecondIndex, Match} when FirstIndex > SecondIndex ->
-      %we found a match in the list, return success
-      {success, {SecondIndex, Match}, {FirstIndex, FirstItem}};
-    _Else ->
-      %look in Rest for a match
-      search(Credit, Rest)
-  end.
+search(Line) ->
+  search(?PHRASE, index_list(Line), []).
+
+search([], _Line, _Accum = [LastPrefix | _RestPrefixes]) ->
+  %return final sum of accumulator prefixes
+  % io:format("Final Prefix: ~p~n", [LastPrefix]),
+  lists:sum([Count || {_Pos, Count} <- LastPrefix]) rem 10000;
+search([Char | RestPhrase], IndexedLine, Accum) ->
+  % search first char
+  NewAccum = accumulate_prefix_list(Char, IndexedLine, [[] | Accum]),
+  % search rest
+  search(RestPhrase, IndexedLine, NewAccum).
+
+count_prefixes([], _Position) ->
+  1;
+count_prefixes([FirstPrefixList | _Prefixes], Position) ->
+  lists:sum([Count || {Pos, Count} <- FirstPrefixList, Pos < Position]).
+
+accumulate_prefix_list(_Char, [], AllPrefixes = [_FirstPrefixList | _Prefixes]) ->
+  % io:format("Accumlated final list for ~c: ~p~n", [Char, FirstPrefixList]),
+  AllPrefixes;
+accumulate_prefix_list(Char, [{LinePos, Char} | RestLine], [CurrentPrefixList | Prefixes]) ->
+  % since this char matches the char in the line, we build a prefix list add it to the current list
+  Count = count_prefixes(Prefixes, LinePos),
+  accumulate_prefix_list(Char, RestLine, [[{LinePos, Count} | CurrentPrefixList] | Prefixes]);
+accumulate_prefix_list(Char, [{_LinePos, _NotChar} | RestLine], Prefixes) ->
+  accumulate_prefix_list(Char, RestLine, Prefixes).
+
+index_list(List) ->
+  lists:zip(lists:seq(1, length(List)), List).
 
 unit_test() ->
+  [{1, thing}] = index_list([thing]),
+  1 = count_prefixes([], 1),
+  0 = count_prefixes([[{1, 3}]], 1),
+  3 = count_prefixes([[{1, 3}]], 2),
+  5 = count_prefixes([[{1, 3}, {2, 2}]], 3),
+  5 = count_prefixes([[{1, 3}, {2, 2}, {3, 1}]], 3),
+  243 = search("welllcooomeee ttto coddde jam"),
+
+  35067810624133695488 = search("so dqmweawewwwwwewwweoeeecweeeeeeljeeem llleclljllcclccllcocdcccoocoeomc moommmojmm oom ommee e eeeeeceem     ee cj ttwetoe t  oo t  ttoowotootto oo  e oo do   ocl voc c ce cdooococodcmocoeodo ododddoodededddddedtecee de eeem j ee     jr jt jm jjcjjjjjjajoaaaaaaaademmaajmtmmmmmmmdm ommh ei"),
+  % 0 = search("so dqmweawewwwwwewwweoeeecweeeeeeljeeem llleclljllcclccllcocdcccoocoeomc moommmojmm oom ommee e eeeeeceem     ee cj ttwetoe t  oo t  ttoowotootto oo  e oo do   ocl voc c ce cdooococodcmocoeodo ododddoodededddddedtecee de eeem j ee     jr jt jm jjcjjjjjjajoaaaaaaaademmaajmtmmmmmmmdm ommh ei"),
   ok.
