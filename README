@@ -12,12 +12,15 @@ See http://code.google.com/codejam/ for the problem sets
 
 Complete and accurate solutions:
 
-africa2010storecredit.erl - Qual Round 2010 Problem A
-codejamalienlang.erl      - Qual Round 2009 Problem A
 codejamminscalar.erl      - Round 1A 2008 Problem A
+codejamalienlang.erl      - Qual Round 2009 Problem A
+codejamwelcome2.erl       - Qual Round 2009 Problem C
+africa2010storecredit.erl - Qual Round 2010 Problem A
 codejamtongues.erl        - Qual Round 2012 Problem A
 codejamrecycle.erl        - Qual Round 2012 Problem C
 
 In Progress:
-codejamwelcome.erl - Horribly slow recursive solution, accurate for the sample but
-  doesn't complete in reasonable time on small-practice
+codejamwelcome.erl - Qual Round 2009 Problem C
+  Horribly slow recursive solution, accurate for the sample but
+  doesn't complete in reasonable time on small-practice. Scrapped and re-written
+  as codejamwelcome2

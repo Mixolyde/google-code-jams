@@ -65,8 +65,8 @@ codejam(InFilename) ->
   [NumCases] = parse_ints(NumCaseString),
 
   % send all of the data lines to the solver
-  % Results = sequential_startsolve(Caselines, NumCases),
-  Results = parallel_startsolve(Caselines, NumCases),
+  Results = sequential_startsolve(Caselines, NumCases),
+  % Results = parallel_startsolve(Caselines, NumCases),
 
   % assert that we have the right number of results
   NumCases = length(Results),
